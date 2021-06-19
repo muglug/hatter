@@ -1,6 +1,6 @@
 mod clause;
 
-use clause::Clause;
+pub use clause::Clause;
 use rand::Rng;
 use std::collections::HashMap;
 use std::collections::HashSet;

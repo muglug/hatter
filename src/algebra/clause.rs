@@ -186,4 +186,62 @@ impl Clause {
 
         return cloned;
     }
+
+    pub fn to_string(&self) -> String {
+        let mut clause_strings = vec![];
+
+        for (var_id, values) in self.possibilities.iter() {
+            let mut var_id = var_id.clone();
+
+            if var_id[0..1] == "*".to_string() {
+                var_id = "<expr>".to_string()
+            }
+
+            let mut clause_string_parts = vec![];
+
+            for value in values {
+                if value == "falsy" {
+                    clause_string_parts.push("!".to_string() + &var_id);
+                    continue;
+                }
+
+                if value == "!falsy" {
+                    clause_string_parts.push(var_id.clone());
+                    continue;
+                }
+
+                let mut negate = false;
+
+                let mut value = value.clone();
+
+                if value[0..1] == "!".to_string() {
+                    negate = true;
+                    value = value[1..].to_string();
+                }
+
+                if value[0..1] == "=".to_string() {
+                    value = value[1..].to_string();
+                }
+
+                if negate {
+                    clause_string_parts.push(var_id.to_string() + " is not " + &value);
+                } else {
+                    clause_string_parts.push(var_id.to_string() + " is " + &value);
+                }
+            }
+
+            if clause_string_parts.len() > 1 {
+                let bracketed = "(".to_string() + &clause_string_parts.join(") || (") + ")";
+                clause_strings.push(bracketed)
+            } else {
+                clause_strings.push(clause_string_parts[0].clone());
+            }
+        }
+
+        if clause_strings.len() > 1 {
+            return "(".to_string() + &clause_strings.join(") || (") + ")";
+        }
+
+        return clause_strings[0].clone();
+    }
 }
