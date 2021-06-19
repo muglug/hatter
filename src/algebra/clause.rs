@@ -1,11 +1,12 @@
 use std::collections::HashMap;
 extern crate rustc_serialize;
+use crate::algebra;
 use std::hash::{Hash, Hasher};
 
 #[derive(Clone)]
 pub struct Clause {
-    pub creating_conditional_id: i32,
-    pub creating_object_id: i32,
+    pub creating_conditional_id: u32,
+    pub creating_object_id: u32,
 
     // An array of strings of the form
     // [
@@ -33,7 +34,7 @@ pub struct Clause {
     pub wedge: bool,
     pub reconcilable: bool,
     pub generated: bool,
-    pub redefined_vars: HashMap<String, bool>,
+    pub redefined_vars: Option<HashMap<String, bool>>,
 }
 
 impl PartialEq for Clause {
@@ -68,10 +69,10 @@ impl Hash for Clause {
 }
 
 impl Clause {
-    fn new(
-        possibilities: HashMap<String, Vec<String>>,
-        creating_conditional_id: i32,
-        creating_object_id: i32,
+    pub fn new(
+        possibilities: &HashMap<String, Vec<String>>,
+        creating_conditional_id: u32,
+        creating_object_id: u32,
         wedge: Option<bool>,
         reconcilable: Option<bool>,
         generated: Option<bool>,
@@ -104,10 +105,7 @@ impl Clause {
                 None => false,
                 Some(x) => x,
             },
-            redefined_vars: match redefined_vars {
-                None => HashMap::new(),
-                Some(x) => x,
-            },
+            redefined_vars,
         };
     }
 
@@ -152,5 +150,40 @@ impl Clause {
         }
 
         return true;
+    }
+
+    pub fn calculate_negation(&self) -> Self {
+        if self.impossibilities != None {
+            return self.clone();
+        }
+
+        let mut impossibilities = HashMap::new();
+
+        for (var_id, possiblity) in self.possibilities.iter() {
+            let mut impossibility = vec![];
+
+            for var_type in possiblity {
+                if (var_type[0..1] != "=".to_string()
+                    && var_type[0..1] != "~".to_string()
+                    && (var_type.len() == 1
+                        || (var_type[1..2] != "=".to_string()
+                            && var_type[1..2] != "~".to_string())))
+                    || var_type.contains("(")
+                    || var_type.contains("getclass-")
+                {
+                    impossibility.push(algebra::negate_type(&var_type));
+                }
+            }
+
+            if impossibility.len() > 0 {
+                impossibilities.insert(var_id.clone(), impossibility);
+            }
+        }
+
+        let mut cloned = self.clone();
+
+        cloned.impossibilities = Some(impossibilities);
+
+        return cloned;
     }
 }

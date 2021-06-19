@@ -1,6 +1,7 @@
 mod clause;
 
 use clause::Clause;
+use rand::Rng;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use std::hash::Hash;
@@ -230,4 +231,360 @@ pub fn simplify_cnf(clauses: &Vec<Clause>) -> Vec<Clause> {
     }
 
     return simplified_clauses;
+}
+
+pub fn group_impossibilities(clauses: &Vec<Clause>) -> Result<Vec<Clause>, String> {
+    let mut complexity = 1;
+
+    let mut clauses = clauses.clone();
+
+    let mut seed_clauses = vec![];
+
+    let clause = clauses.pop();
+
+    if clause == None {
+        panic!("there should be clauses")
+    }
+
+    let clause = clause.unwrap();
+
+    if !clause.wedge {
+        if clause.impossibilities == None {
+            panic!("Clause should have impossibilities");
+        }
+
+        let impossibilities = clause.impossibilities.unwrap();
+
+        for (var, impossible_types) in impossibilities.iter() {
+            for impossible_type in impossible_types.iter() {
+                let mut seed_clause_possibilities = HashMap::new();
+                seed_clause_possibilities.insert(var.clone(), vec![impossible_type.clone()]);
+
+                let seed_clause = Clause::new(
+                    &seed_clause_possibilities,
+                    clause.creating_conditional_id,
+                    clause.creating_object_id,
+                    None,
+                    None,
+                    None,
+                    None,
+                );
+
+                seed_clauses.push(seed_clause);
+
+                complexity += 1;
+            }
+        }
+
+        if clauses.len() == 0 || seed_clauses.len() == 0 {
+            return Ok(seed_clauses);
+        }
+    }
+
+    while clauses.len() > 0 {
+        let clause = clauses.pop();
+
+        if clause == None {
+            panic!("impossible");
+        }
+
+        let clause = clause.unwrap();
+
+        let mut new_clauses = vec![];
+
+        for grouped_clause in seed_clauses.clone().iter() {
+            let clause_impossibilities = clause.impossibilities.clone();
+
+            if clause_impossibilities == None {
+                panic!("Should not be possible");
+            }
+
+            for (var, impossible_types) in clause_impossibilities.unwrap() {
+                for impossible_type in impossible_types.iter() {
+                    let mut new_clause_possibilities = grouped_clause.possibilities.clone();
+
+                    let grouped_clause_possibilities = grouped_clause.possibilities.get(&var);
+
+                    if let Some(x) = grouped_clause_possibilities {
+                        let mut new_insert_value = x.clone();
+                        if !new_insert_value.contains(impossible_type) {
+                            new_insert_value.push(impossible_type.clone());
+                        }
+                        new_clause_possibilities.insert(var.clone(), new_insert_value.clone());
+
+                        let mut removed_indexes = HashSet::new();
+
+                        let new_len = new_insert_value.len();
+
+                        for i in 0..new_len {
+                            for j in i + 1..new_len {
+                                let ith = new_insert_value[i].clone();
+                                let jth = new_insert_value[j].clone();
+
+                                if ith == "!".to_string() + &jth || jth == "!".to_string() + &ith {
+                                    removed_indexes.insert(i);
+                                    removed_indexes.insert(j);
+                                }
+                            }
+                        }
+
+                        if removed_indexes.len() > 0 {
+                            let mut new_possibilities = vec![];
+                            let mut i = 0;
+
+                            for val in new_insert_value {
+                                if !removed_indexes.contains(&i) {
+                                    new_possibilities.push(val);
+                                }
+                                i += 1;
+                            }
+
+                            if new_possibilities.len() == 0 {
+                                new_clause_possibilities.remove(&var);
+                            } else {
+                                new_clause_possibilities.insert(var.clone(), new_possibilities);
+                            }
+                        }
+                    } else {
+                        new_clause_possibilities.insert(var.clone(), vec![impossible_type.clone()]);
+                    }
+
+                    if new_clause_possibilities.len() == 0 {
+                        continue;
+                    }
+
+                    new_clauses.push(Clause::new(
+                        &new_clause_possibilities,
+                        grouped_clause.creating_conditional_id,
+                        clause.creating_object_id,
+                        Some(false),
+                        Some(true),
+                        Some(true),
+                        None,
+                    ));
+
+                    complexity += 1;
+
+                    if complexity > 20000 {
+                        return Err("Complicated".to_string());
+                    }
+                }
+            }
+        }
+
+        seed_clauses = new_clauses.clone();
+    }
+
+    return Ok(seed_clauses);
+}
+
+pub fn combine_ored_clauses(
+    left_clauses: &Vec<Clause>,
+    right_clauses: &Vec<Clause>,
+    conditional_object_id: u32,
+) -> Vec<Clause> {
+    let mut clauses = vec![];
+
+    let mut all_wedges = true;
+    let mut has_wedge = false;
+
+    for left_clause in left_clauses {
+        for right_clause in right_clauses {
+            all_wedges = all_wedges && (left_clause.wedge && right_clause.wedge);
+            has_wedge = has_wedge || (left_clause.wedge && right_clause.wedge);
+        }
+    }
+
+    if all_wedges {
+        return vec![Clause::new(
+            &HashMap::new(),
+            conditional_object_id,
+            conditional_object_id,
+            Some(true),
+            None,
+            None,
+            None,
+        )];
+    }
+
+    for left_clause in left_clauses {
+        'right: for right_clause in right_clauses {
+            if left_clause.wedge && right_clause.wedge {
+                // handled below
+                continue;
+            }
+
+            let mut possibilities: HashMap<String, Vec<String>> = HashMap::new();
+
+            let can_reconcile = !left_clause.wedge
+                && !right_clause.wedge
+                && left_clause.reconcilable
+                && right_clause.reconcilable;
+
+            for (var, possible_types) in left_clause.possibilities.iter() {
+                if right_clause.possibilities.contains_key(var) {
+                    continue;
+                }
+
+                if let Some(var_possibilities) = possibilities.get(var) {
+                    let mut var_possibilities = var_possibilities.clone();
+                    let mut possible_types = possible_types.clone();
+                    var_possibilities.append(&mut possible_types);
+                    possibilities.insert(var.clone(), var_possibilities);
+                } else {
+                    possibilities.insert(var.clone(), possible_types.clone());
+                }
+            }
+
+            for (var, possible_types) in right_clause.possibilities.iter() {
+                if let Some(var_possibilities) = possibilities.get(var) {
+                    let mut var_possibilities = var_possibilities.clone();
+                    let mut possible_types = possible_types.clone();
+                    var_possibilities.append(&mut possible_types);
+                    possibilities.insert(var.clone(), var_possibilities);
+                } else {
+                    possibilities.insert(var.clone(), possible_types.clone());
+                }
+            }
+
+            if left_clauses.len() > 1 || right_clauses.len() > 1 {
+                for (var, p) in possibilities.clone().iter() {
+                    let mut p = p.clone();
+                    p.dedup();
+                    possibilities.insert(var.clone(), p);
+                }
+            }
+
+            for (_, var_possibilities) in possibilities.iter() {
+                if var_possibilities.len() == 2 {
+                    if var_possibilities[0] == "!".to_string() + &var_possibilities[1]
+                        || var_possibilities[1] == "!".to_string() + &var_possibilities[0]
+                    {
+                        continue 'right;
+                    }
+                }
+            }
+
+            let creating_conditional_id;
+
+            if right_clause.creating_conditional_id == left_clause.creating_conditional_id {
+                creating_conditional_id = right_clause.creating_conditional_id;
+            } else {
+                creating_conditional_id = conditional_object_id;
+            }
+
+            let is_generated = right_clause.generated
+                || left_clause.generated
+                || left_clauses.len() > 1
+                || right_clauses.len() > 1;
+
+            clauses.push(Clause::new(
+                &possibilities,
+                creating_conditional_id,
+                creating_conditional_id,
+                Some(false),
+                Some(can_reconcile),
+                Some(is_generated),
+                None,
+            ))
+        }
+    }
+
+    if has_wedge {
+        clauses.push(Clause::new(
+            &HashMap::new(),
+            conditional_object_id,
+            conditional_object_id,
+            Some(true),
+            None,
+            None,
+            None,
+        ));
+    }
+
+    return clauses;
+}
+
+// Negates a set of clauses
+// negateClauses([$a || $b]) => !$a && !$b
+// negateClauses([$a, $b]) => !$a || !$b
+// negateClauses([$a, $b || $c]) =>
+//   (!$a || !$b) &&
+//   (!$a || !$c)
+// negateClauses([$a, $b || $c, $d || $e || $f]) =>
+//   (!$a || !$b || !$d) &&
+//   (!$a || !$b || !$e) &&
+//   (!$a || !$b || !$f) &&
+//   (!$a || !$c || !$d) &&
+//   (!$a || !$c || !$e) &&
+//   (!$a || !$c || !$f)
+pub fn negate_formula(clauses: &Vec<Clause>) -> Result<Vec<Clause>, String> {
+    let clauses: Vec<Clause> = clauses
+        .iter()
+        .filter(|clause| clause.reconcilable)
+        .cloned()
+        .collect();
+
+    if clauses.len() == 0 {
+        let mut rng = rand::thread_rng();
+
+        let n2: u32 = rng.gen();
+        return Ok(vec![Clause::new(
+            &HashMap::new(),
+            n2,
+            n2,
+            Some(true),
+            None,
+            None,
+            None,
+        )]);
+    }
+
+    let mut better_clauses = vec![];
+
+    for clause in clauses {
+        better_clauses.push(clause.calculate_negation());
+    }
+
+    let impossible_clauses = group_impossibilities(&better_clauses);
+
+    if let Err(x) = impossible_clauses {
+        return Err(x);
+    }
+
+    let impossible_clauses = impossible_clauses.unwrap();
+
+    if impossible_clauses.len() == 0 {
+        let mut rng = rand::thread_rng();
+
+        let n2: u32 = rng.gen();
+        return Ok(vec![Clause::new(
+            &HashMap::new(),
+            n2,
+            n2,
+            Some(true),
+            None,
+            None,
+            None,
+        )]);
+    }
+
+    let negated = simplify_cnf(&impossible_clauses);
+
+    if negated.len() == 0 {
+        let mut rng = rand::thread_rng();
+
+        let n2: u32 = rng.gen();
+        return Ok(vec![Clause::new(
+            &HashMap::new(),
+            n2,
+            n2,
+            Some(true),
+            None,
+            None,
+            None,
+        )]);
+    }
+
+    return Ok(negated);
 }
