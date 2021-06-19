@@ -61,13 +61,6 @@ fn keys_match<T: Eq + Hash, U, V>(map1: &HashMap<T, U>, map2: &HashMap<T, V>) ->
 // It simplifies formulae:
 //     ($a) && ($a || $b) => $a
 //     (!$a) && (!$b) && ($a || $b || $c) => $c
-//
-// @param list<Clause>  $clauses
-//
-// @return list<Clause>
-//
-// @psalm-pure
-//
 pub fn simplify_cnf(clauses: &Vec<Clause>) -> Vec<Clause> {
     let clause_count = clauses.len();
 
