@@ -95,7 +95,7 @@ pub fn simplify_cnf(clauses: &Vec<Clause>) -> Vec<Clause> {
     }
 
     // remove impossible types
-    'outer: for clause_a in unique_clauses.clone().iter() {
+    'outer: for clause_a in unique_clauses.clone() {
         if !clause_a.reconcilable || clause_a.wedge {
             continue;
         }
@@ -113,7 +113,7 @@ pub fn simplify_cnf(clauses: &Vec<Clause>) -> Vec<Clause> {
         }
 
         if !is_clause_a_simple {
-            'inner: for clause_b in unique_clauses.clone().iter() {
+            'inner: for clause_b in unique_clauses.clone() {
                 if clause_a == clause_b || !clause_b.reconcilable || clause_b.wedge {
                     continue;
                 }
@@ -141,7 +141,7 @@ pub fn simplify_cnf(clauses: &Vec<Clause>) -> Vec<Clause> {
                     }
 
                     if opposing_keys.len() == 1 {
-                        unique_clauses.remove(clause_a);
+                        unique_clauses.remove(&clause_a);
 
                         let maybe_new_clause = clause_a.remove_possibilities(&opposing_keys[0]);
 
@@ -158,11 +158,11 @@ pub fn simplify_cnf(clauses: &Vec<Clause>) -> Vec<Clause> {
         }
 
         // only iterates over one single possibility
-        for (clause_var, var_possibilities) in clause_a.possibilities.iter() {
+        for (clause_var, var_possibilities) in &clause_a.possibilities {
             let only_type = &var_possibilities[0];
             let negated_clause_type = negate_type(only_type);
 
-            for clause_b in unique_clauses.clone().iter() {
+            for clause_b in unique_clauses.clone() {
                 if clause_a == clause_b || !clause_b.reconcilable || clause_b.wedge {
                     continue 'outer;
                 }
@@ -179,7 +179,7 @@ pub fn simplify_cnf(clauses: &Vec<Clause>) -> Vec<Clause> {
                             }
                         }
 
-                        unique_clauses.remove(clause_b);
+                        unique_clauses.remove(&clause_b);
 
                         if clause_var_possibilities.len() == 0 {
                             let maybe_updated_clause = clause_b.remove_possibilities(&clause_var);
@@ -204,10 +204,10 @@ pub fn simplify_cnf(clauses: &Vec<Clause>) -> Vec<Clause> {
 
     let mut simplified_clauses = vec![];
 
-    for clause_a in unique_clauses.clone().iter() {
+    for clause_a in &unique_clauses {
         let mut is_redundant = false;
 
-        for clause_b in unique_clauses.iter() {
+        for clause_b in &unique_clauses {
             if clause_a == clause_b || !clause_b.reconcilable || clause_b.wedge || clause_a.wedge {
                 continue;
             }
